@@ -2,12 +2,13 @@
 module platform::subscription {
     use sui::tx_context::{Self, TxContext, sender};
     use sui::object::{Self, UID};
-    use sui::coin::{Self, Coin};
+    use sui::coin::{Self, Coin, CoinMetadata};
+    use sui::balance::{Self, Balance};
     use sui::table::{Table, Self};
     use sui::bag::{Self, Bag};
     use sui::transfer;
     use sui::clock::{Self, Clock};
-    use std::string::{String};
+    use std::string::{Self, String};
     use std::vector;
 
     /// Error Constants ///
@@ -16,7 +17,7 @@ module platform::subscription {
     const EInvalidTransaction: u64 = 2; // Invalid transaction type
     const ESubscriptionExists: u64 = 3; // User already has an active subscription
 
-    const FEE: u64 = 1;
+    const FEE: u128 = 1;
 
     // Type that stores user account data:
     struct Account<phantom COIN> has key, store {
@@ -25,7 +26,6 @@ module platform::subscription {
         create_date: u64,
         last_subscription_date: u64,
         subscription_valid_until: u64,
-        subscription_fee: Coin<COIN>,
         user_address: address,
     }
 
@@ -34,7 +34,7 @@ module platform::subscription {
         id: UID,
         user_accounts: Table<address, Account<COIN>>,
         balance: Bag,
-        platform_address: address
+        sub_price: u64
     }
 
     struct Protocol has key, store {
@@ -55,26 +55,66 @@ module platform::subscription {
     }
 
     /// Create a new subscription platform.
-    public fun new_platform<COIN>(ctx: &mut TxContext) {
+    public fun new_platform<COIN>(price:u64, ctx: &mut TxContext) {
         let id = object::new(ctx);
         let user_accounts = table::new<address, Account<COIN>>(ctx);
         transfer::share_object(Platform<COIN> {
             id,
             user_accounts,
             balance: bag::new(ctx),
-            platform_address: tx_context::sender(ctx)
+            sub_price: price
         })
     }
 
     // Subscribe a user to the platform.
     public fun subscribe<COIN>(
+        protocol: &mut Protocol,
         platform: &mut Platform<COIN>,
         clock: &Clock,
-        subscription_fee: Coin<COIN>,
+        coin: Coin<COIN>,
+        coin_metadata: &CoinMetadata<COIN>,
         ctx: &mut TxContext
     ) {
-        // Check if user already has an active subscription
-        assert!(!table::contains<address, Account<COIN>>(&platform.user_accounts, tx_context::sender(ctx)), ESubscriptionExists);
+        let value = coin::value(&coin);
+        let deposit_value = value - (((value as u128) * FEE / 100) as u64);
+        let protocol_fee = value - deposit_value;
+
+        let protocol_fee = coin::split(&mut coin, protocol_fee, ctx);
+        // define the protocol balance 
+        let protocol_balance = coin::into_balance(protocol_fee);
+        // define the platform balance 
+        let platform_balance = coin::into_balance(coin);
+        // get protocol bag
+        let protocol_bag = &mut protocol.balance;
+        // get platfrom bag
+        let platform_bag = &mut platform.balance;
+        // define the name of coin
+        let name = coin::get_name(coin_metadata);
+        // we should create a key value pair in our bag like <String, Balance>
+        let coin_names = string::utf8(b"coins");
+        // lets check is there any same token in protocol bag 
+        if(bag::contains(protocol_bag, name)) { 
+        // if there is a same token in our bag we will join it.
+            let coin_value = bag::borrow_mut( protocol_bag, name);
+            balance::join(coin_value, protocol_balance);
+        }
+        // if it is not lets add it.
+        else {
+             // add fund into the bag 
+             bag::add(platform_bag, name, protocol_balance);
+        };
+        // lets check is there any same token in platform bag 
+        if(bag::contains(platform_bag, name)) { 
+        // if there is a same token in our bag we will join it.
+            let coin_value = bag::borrow_mut( platform_bag, name);
+            balance::join(coin_value, platform_balance);
+        }
+        // if it is not lets add it.
+        else {
+             // add fund into the bag 
+             bag::add(platform_bag, name, platform_balance);
+        };
+
         let id_ = object::new(ctx);
         let inner_ = object::uid_to_address(&id_); 
         let user_account = Account {
@@ -83,47 +123,46 @@ module platform::subscription {
             create_date: clock::timestamp_ms(clock),
             last_subscription_date: 0,
             subscription_valid_until: 0,
-            subscription_fee,
             user_address: tx_context::sender(ctx),
         };
         // Save user account to the platform
         table::add(&mut platform.user_accounts, inner_, user_account);
     }
 
-    // Renew a user's subscription on the platform.
-    public fun renew_subscription<COIN>(
-        platform: &mut Platform<COIN>,
-        acc: &Account<COIN>,
-        ctx: &mut TxContext
-    ) {
-        let user_account = table::borrow_mut<address, Account<COIN>>(&mut platform.user_accounts, acc.inner);
-        assert!(coin::value(&user_account.subscription_fee) >= 0, EInsufficientFunds);
-        // Subscription renewal logic goes here
-    }
+    // // Renew a user's subscription on the platform.
+    // public fun renew_subscription<COIN>(
+    //     platform: &mut Platform<COIN>,
+    //     acc: &Account<COIN>,
+    //     ctx: &mut TxContext
+    // ) {
+    //     let user_account = table::borrow_mut<address, Account<COIN>>(&mut platform.user_accounts, acc.inner);
+    //     assert!(coin::value(&user_account.subscription_fee) >= 0, EInsufficientFunds);
+    //     // Subscription renewal logic goes here
+    // }
 
-    // Unsubscribe a user from the platform.
-    public fun unsubscribe<COIN>(
-        platform: &mut Platform<COIN>,
-        ctx: &mut TxContext
-    ) {
-        assert!(table::contains<address, Account<COIN>>(&platform.user_accounts, tx_context::sender(ctx)), ENoSubscription);
-        // Unsubscribe logic goes here
-    }
+    // // Unsubscribe a user from the platform.
+    // public fun unsubscribe<COIN>(
+    //     platform: &mut Platform<COIN>,
+    //     ctx: &mut TxContext
+    // ) {
+    //     assert!(table::contains<address, Account<COIN>>(&platform.user_accounts, tx_context::sender(ctx)), ENoSubscription);
+    //     // Unsubscribe logic goes here
+    // }
 
-    // Accessor functions
+    // // Accessor functions
 
-    public fun user_create_date<COIN>(self: &Platform<COIN>, ctx: &mut TxContext): u64 {
-        assert!(table::contains<address, Account<COIN>>(&self.user_accounts, tx_context::sender(ctx)), ENoSubscription);
-        let user_account = table::borrow<address, Account<COIN>>(&self.user_accounts, tx_context::sender(ctx));
-        user_account.create_date
-    }
+    // public fun user_create_date<COIN>(self: &Platform<COIN>, ctx: &mut TxContext): u64 {
+    //     assert!(table::contains<address, Account<COIN>>(&self.user_accounts, tx_context::sender(ctx)), ENoSubscription);
+    //     let user_account = table::borrow<address, Account<COIN>>(&self.user_accounts, tx_context::sender(ctx));
+    //     user_account.create_date
+    // }
 
-    // Implement other accessor functions as needed...
+    // // Implement other accessor functions as needed...
 
-    // Example accessor function for fetching user's subscription fee
-    public fun user_subscription_fee<COIN>(self: &Platform<COIN>, ctx: &mut TxContext): u64 {
-        assert!(table::contains<address, Account<COIN>>(&self.user_accounts, tx_context::sender(ctx)), ENoSubscription);
-        let user_account = table::borrow<address, Account<COIN>>(&self.user_accounts, tx_context::sender(ctx));
-        coin::value(&user_account.subscription_fee)
-    }
+    // // Example accessor function for fetching user's subscription fee
+    // public fun user_subscription_fee<COIN>(self: &Platform<COIN>, ctx: &mut TxContext): u64 {
+    //     assert!(table::contains<address, Account<COIN>>(&self.user_accounts, tx_context::sender(ctx)), ENoSubscription);
+    //     let user_account = table::borrow<address, Account<COIN>>(&self.user_accounts, tx_context::sender(ctx));
+    //     coin::value(&user_account.subscription_fee)
+    // }
 }

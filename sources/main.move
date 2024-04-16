@@ -26,6 +26,7 @@ module platform::subscription {
         create_date: u64,
         last_subscription_date: u64,
         subscription_valid_until: u64,
+        sub_count: u64,
         user_address: address,
     }
 
@@ -106,6 +107,7 @@ module platform::subscription {
             create_date: clock::timestamp_ms(clock),
             last_subscription_date: 0,
             subscription_valid_until: 0,
+            sub_count: 1,
             user_address: tx_context::sender(ctx),
         };
         account
@@ -115,7 +117,8 @@ module platform::subscription {
     public fun resubscribe<COIN>(
         protocol:&mut Protocol,
         platform: &mut Platform<COIN>,
-        acc: &Account<COIN>,
+        acc: &mut Account<COIN>,
+        c: &Clock,
         coin_metadata: &CoinMetadata<COIN>,
         coin: Coin<COIN>,
         ctx: &mut TxContext
@@ -146,6 +149,10 @@ module platform::subscription {
         helper_bag(protocol_bag, coin_names, protocol_balance);
         // lets check is there any same token in platform bag 
         helper_bag(platform_bag, coin_names, platform_balance);
+        // increase the sub count 1
+        acc.sub_count = acc.sub_count + 1;
+        // set the latest sub date 
+        acc.last_subscription_date = timestamp_ms(c);
     }
 
     // Example accessor function for fetching user's subscription fee

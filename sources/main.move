@@ -71,14 +71,15 @@ module platform::subscription {
         protocol: &mut Protocol,
         platform: &mut Platform<COIN>,
         clock: &Clock,
-        coin: Coin<COIN>,
         coin_metadata: &CoinMetadata<COIN>,
+        coin: Coin<COIN>,
         ctx: &mut TxContext
     ) {
         let value = coin::value(&coin);
         let deposit_value = value - (((value as u128) * FEE / 100) as u64);
+        assert!(value + deposit_value >= platform.sub_price, EInsufficientFunds);
         let protocol_fee = value - deposit_value;
-
+        // split the protocol fee 
         let protocol_fee = coin::split(&mut coin, protocol_fee, ctx);
         // define the protocol balance 
         let protocol_balance = coin::into_balance(protocol_fee);
@@ -93,27 +94,9 @@ module platform::subscription {
         // we should create a key value pair in our bag like <String, Balance>
         let coin_names = string::utf8(b"coins");
         // lets check is there any same token in protocol bag 
-        if(bag::contains(protocol_bag, name)) { 
-        // if there is a same token in our bag we will join it.
-            let coin_value = bag::borrow_mut( protocol_bag, name);
-            balance::join(coin_value, protocol_balance);
-        }
-        // if it is not lets add it.
-        else {
-             // add fund into the bag 
-             bag::add(platform_bag, name, protocol_balance);
-        };
+        helper_bag(protocol_bag, coin_names, protocol_balance);
         // lets check is there any same token in platform bag 
-        if(bag::contains(platform_bag, name)) { 
-        // if there is a same token in our bag we will join it.
-            let coin_value = bag::borrow_mut( platform_bag, name);
-            balance::join(coin_value, platform_balance);
-        }
-        // if it is not lets add it.
-        else {
-             // add fund into the bag 
-             bag::add(platform_bag, name, platform_balance);
-        };
+        helper_bag(platform_bag, coin_names, platform_balance);
 
         let id_ = object::new(ctx);
         let inner_ = object::uid_to_address(&id_); 
@@ -129,16 +112,43 @@ module platform::subscription {
         table::add(&mut platform.user_accounts, inner_, user_account);
     }
 
-    // // Renew a user's subscription on the platform.
-    // public fun renew_subscription<COIN>(
-    //     platform: &mut Platform<COIN>,
-    //     acc: &Account<COIN>,
-    //     ctx: &mut TxContext
-    // ) {
-    //     let user_account = table::borrow_mut<address, Account<COIN>>(&mut platform.user_accounts, acc.inner);
-    //     assert!(coin::value(&user_account.subscription_fee) >= 0, EInsufficientFunds);
-    //     // Subscription renewal logic goes here
-    // }
+    // Renew a user's subscription on the platform.
+    public fun resubscribe<COIN>(
+        protocol:&mut Protocol,
+        platform: &mut Platform<COIN>,
+        acc: &Account<COIN>,
+        coin_metadata: &CoinMetadata<COIN>,
+        coin: Coin<COIN>,
+        ctx: &mut TxContext
+    ) {
+        let user_account = table::borrow_mut<address, Account<COIN>>(&mut platform.user_accounts, acc.inner);
+        // get value 
+        let value = coin::value(&coin);
+        // calculate deposit value 
+        let deposit_value = value - (((value as u128) * FEE / 100) as u64);
+        // check the fee + sub price 
+        assert!(value + deposit_value >= platform.sub_price, EInsufficientFunds);
+        // calculate the protocol fee
+        let protocol_fee = value - deposit_value;
+        // split the protocol fee 
+        let protocol_fee = coin::split(&mut coin, protocol_fee, ctx);
+        // define the protocol balance 
+        let protocol_balance = coin::into_balance(protocol_fee);
+        // define the platform balance 
+        let platform_balance = coin::into_balance(coin);
+        // get protocol bag
+        let protocol_bag = &mut protocol.balance;
+        // get platfrom bag
+        let platform_bag = &mut platform.balance;
+        // define the name of coin
+        let name = coin::get_name(coin_metadata);
+        // we should create a key value pair in our bag like <String, Balance>
+        let coin_names = string::utf8(b"coins");
+        // lets check is there any same token in protocol bag 
+        helper_bag(protocol_bag, coin_names, protocol_balance);
+        // lets check is there any same token in platform bag 
+        helper_bag(platform_bag, coin_names, platform_balance);
+    }
 
     // // Unsubscribe a user from the platform.
     // public fun unsubscribe<COIN>(
@@ -165,4 +175,17 @@ module platform::subscription {
     //     let user_account = table::borrow<address, Account<COIN>>(&self.user_accounts, tx_context::sender(ctx));
     //     coin::value(&user_account.subscription_fee)
     // }
+
+    fun helper_bag<COIN>(bag_: &mut Bag, coin: String, balance: Balance<COIN>) {
+        if(bag::contains(bag_, coin)) { 
+        // if there is a same token in our bag we will join it.
+            let coin_value = bag::borrow_mut( bag_, coin);
+            balance::join(coin_value, balance);
+        }
+        // if it is not lets add it.
+        else {
+             // add fund into the bag 
+             bag::add(bag_, coin, balance);
+        };
+    }
 }

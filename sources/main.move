@@ -150,15 +150,6 @@ module platform::subscription {
         helper_bag(platform_bag, coin_names, platform_balance);
     }
 
-    // // Unsubscribe a user from the platform.
-    // public fun unsubscribe<COIN>(
-    //     platform: &mut Platform<COIN>,
-    //     ctx: &mut TxContext
-    // ) {
-    //     assert!(table::contains<address, Account<COIN>>(&platform.user_accounts, tx_context::sender(ctx)), ENoSubscription);
-    //     // Unsubscribe logic goes here
-    // }
-
     // // Accessor functions
 
     // public fun user_create_date<COIN>(self: &Platform<COIN>, ctx: &mut TxContext): u64 {

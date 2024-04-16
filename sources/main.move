@@ -19,7 +19,7 @@ module platform::subscription {
     struct SubscriptionTransaction has store, copy, drop {
         transaction_type: String,
         amount: u64,
-        // In a subscription model, we don't need 'to' and 'from' fields
+        timestamp: u64,
     }
 
     // Type that stores user account data:
@@ -76,12 +76,26 @@ module platform::subscription {
     // Renew a user's subscription on the platform.
     public fun renew_subscription<COIN>(
         platform: &mut SubscriptionPlatform<COIN>,
+        clock: &Clock,
         ctx: &mut TxContext
     ) {
         assert!(table::contains<address, UserAccount<COIN>>(&platform.user_accounts, tx_context::sender(ctx)), ENoSubscription);
         let user_account = table::borrow_mut<address, UserAccount<COIN>>(&mut platform.user_accounts, tx_context::sender(ctx));
         assert!(coin::value(&user_account.subscription_fee) >= 0, EInsufficientFunds);
-        // Subscription renewal logic goes here
+        
+        // Update subscription details
+        user_account.last_subscription_date = clock::timestamp_ms(clock);
+        // Logic to calculate new subscription validity based on renewal
+        // For example, if we're adding 30 days to the current validity:
+        user_account.subscription_valid_until += 30 * 24 * 60 * 60 * 1000; // Adding 30 days in milliseconds
+        
+        // Log subscription renewal transaction
+        let renewal_transaction = SubscriptionTransaction {
+            transaction_type: String::from("Renewal"),
+            amount: coin::value(&user_account.subscription_fee),
+            timestamp: clock::timestamp_ms(clock),
+        };
+        vector::push(&mut user_account.subscription_transactions, renewal_transaction);
     }
 
     // Unsubscribe a user from the platform.
@@ -90,7 +104,8 @@ module platform::subscription {
         ctx: &mut TxContext
     ) {
         assert!(table::contains<address, UserAccount<COIN>>(&platform.user_accounts, tx_context::sender(ctx)), ENoSubscription);
-        // Unsubscribe logic goes here
+        // Remove user account from the platform
+        table::remove(&mut platform.user_accounts, tx_context::sender(ctx));
     }
 
     // Accessor functions
@@ -109,4 +124,27 @@ module platform::subscription {
         let user_account = table::borrow<address, UserAccount<COIN>>(&self.user_accounts, tx_context::sender(ctx));
         coin::value(&user_account.subscription_fee)
     }
+
+
+    // Function to check if user's subscription is valid
+    public fun is_subscription_valid<COIN>(self: &SubscriptionPlatform<COIN>, ctx: &mut TxContext, clock: &Clock) -> bool {
+        if let Some(user_account) = table::get::<address, UserAccount<COIN>>(&self.user_accounts, tx_context::sender(ctx)) {
+            return user_account.subscription_valid_until >= clock::timestamp_ms(clock);
+        }
+        false
+    }
+
+    // Function to update user's subscription fee
+    public fun update_subscription_fee<COIN>(
+        platform: &mut SubscriptionPlatform<COIN>,
+        new_fee: Coin<COIN>,
+        ctx: &mut TxContext
+    ) {
+        assert!(table::contains<address, UserAccount<COIN>>(&platform.user_accounts, tx_context::sender(ctx)), ENoSubscription);
+        let mut user_account = table::get_mut::<address, UserAccount<COIN>>(&mut platform.user_accounts, tx_context::sender(ctx)).unwrap();
+        user_account.subscription_fee = new_fee;
+    }
+
 }
+
+

@@ -7,7 +7,7 @@ module platform::subscription {
     use sui::table::{Table, Self};
     use sui::bag::{Self, Bag};
     use sui::transfer;
-    use sui::clock::{Self, Clock};
+    use sui::clock::{Self, Clock, timestamp_ms};
     use std::string::{Self, String};
     use std::vector;
 
@@ -16,6 +16,7 @@ module platform::subscription {
     const EInsufficientFunds: u64 = 1; // Insufficient funds to subscribe or renew
     const EInvalidTransaction: u64 = 2; // Invalid transaction type
     const ESubscriptionExists: u64 = 3; // User already has an active subscription
+    const EInvalidCap: u64 = 4; // User already has an active subscription
 
     const FEE: u128 = 1;
 
@@ -36,6 +37,11 @@ module platform::subscription {
         inner: ID,
         balance: Bag,
         sub_price: u64
+    }
+
+    struct PlatformCap has key {
+        id: UID,
+        platform: ID
     }
 
     struct Protocol has key, store {
@@ -64,7 +70,8 @@ module platform::subscription {
             inner: inner_,
             balance: bag::new(ctx),
             sub_price: price
-        })
+        });
+        transfer::transfer(PlatformCap{id: object::new(ctx), platform: inner_}, sender(ctx));
     }
 
     // Subscribe a user to the platform.
@@ -153,6 +160,19 @@ module platform::subscription {
         acc.sub_count = acc.sub_count + 1;
         // set the latest sub date 
         acc.last_subscription_date = timestamp_ms(c);
+    }
+
+    public fun withdraw_fee<COIN>(_:&AdminCap, self: &mut Protocol, coin: String, ctx: &mut TxContext) : Coin<COIN> {
+        let balance_ = bag::remove<String, Balance<COIN>>(&mut self.balance, coin);
+        let coin_ = coin::from_balance(balance_, ctx);
+        coin_
+    }
+
+    public fun withdraw_sub<COIN>(self: &mut Platform<COIN>, cap: &PlatformCap, coin: String, ctx: &mut TxContext) : Coin<COIN> {
+        assert!(self.inner == cap.platform, EInvalidCap);
+        let balance_ = bag::remove<String, Balance<COIN>>(&mut self.balance, coin);
+        let coin_ = coin::from_balance(balance_, ctx);
+        coin_
     }
 
     // Example accessor function for fetching user's subscription fee

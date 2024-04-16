@@ -20,7 +20,7 @@ module platform::subscription {
     const FEE: u128 = 1;
 
     // Type that stores user account data:
-    struct Account<phantom COIN> has key, store {
+    struct Account<phantom COIN> has key {
         id: UID,
         inner: address,
         create_date: u64,
@@ -148,14 +148,22 @@ module platform::subscription {
         helper_bag(platform_bag, coin_names, platform_balance);
     }
 
-    // // Implement other accessor functions as needed...
-
-    // // Example accessor function for fetching user's subscription fee
-    // public fun user_subscription_fee<COIN>(self: &Platform<COIN>, ctx: &mut TxContext): u64 {
-    //     assert!(table::contains<address, Account<COIN>>(&self.user_accounts, tx_context::sender(ctx)), ENoSubscription);
-    //     let user_account = table::borrow<address, Account<COIN>>(&self.user_accounts, tx_context::sender(ctx));
-    //     coin::value(&user_account.subscription_fee)
-    // }
+    // Example accessor function for fetching user's subscription fee
+    public fun get_account_date<COIN>(self: &Account<COIN>): u64 {
+        self.create_date
+    }
+    public fun get_account_id<COIN>(self: &Account<COIN>): address {
+        self.inner
+    }
+    public fun get_account_sub_date<COIN>(self: &Account<COIN>): u64 {
+        self.last_subscription_date
+    }
+    public fun get_account_sub_valid<COIN>(self: &Account<COIN>): u64 {
+        self.subscription_valid_until
+    }
+    public fun get_account_owner<COIN>(self: &Account<COIN>): address {
+        self.user_address
+    }
 
     fun helper_bag<COIN>(bag_: &mut Bag, coin: String, balance: Balance<COIN>) {
         if(bag::contains(bag_, coin)) { 

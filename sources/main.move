@@ -25,6 +25,7 @@ module platform::subscription {
     // Type that stores user account data:
     struct UserAccount<phantom COIN> has key, store {
         id: UID,
+        inner: address,
         create_date: u64,
         last_subscription_date: u64,
         subscription_valid_until: u64,
@@ -34,7 +35,7 @@ module platform::subscription {
     }
 
     // Type that represents the platform's subscription system:
-    struct SubscriptionPlatform<phantom COIN> has key {
+    struct SubscriptionPlatform<phantom COIN> has key, store {
         id: UID,
         user_accounts: Table<address, UserAccount<COIN>>,
         platform_address: address
@@ -60,8 +61,11 @@ module platform::subscription {
     ) {
         // Check if user already has an active subscription
         assert!(!table::contains<address, UserAccount<COIN>>(&platform.user_accounts, tx_context::sender(ctx)), ESubscriptionExists);
+        let id_ = object::new(ctx);
+        let inner_ = object::uid_to_address(&id_); 
         let user_account = UserAccount {
             id: object::new(ctx),
+            inner: inner_,
             create_date: clock::timestamp_ms(clock),
             last_subscription_date: 0,
             subscription_valid_until: 0,
@@ -70,7 +74,7 @@ module platform::subscription {
             subscription_transactions: vector::empty<SubscriptionTransaction>()
         };
         // Save user account to the platform
-        table::add(&mut platform.user_accounts, tx_context::sender(ctx), user_account);
+        table::add(&mut platform.user_accounts, inner_, user_account);
     }
 
     // Renew a user's subscription on the platform.

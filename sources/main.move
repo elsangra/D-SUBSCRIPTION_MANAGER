@@ -1,7 +1,7 @@
 #[allow(lint(self_transfer))]
 module platform::subscription {
     use sui::tx_context::{Self, TxContext, sender};
-    use sui::object::{Self, UID};
+    use sui::object::{Self, UID, ID};
     use sui::coin::{Self, Coin, CoinMetadata};
     use sui::balance::{Self, Balance};
     use sui::table::{Table, Self};
@@ -32,7 +32,7 @@ module platform::subscription {
     // Type that represents the platform's subscription system:
     struct Platform<phantom COIN> has key, store {
         id: UID,
-        user_accounts: Table<address, Account<COIN>>,
+        inner: ID,
         balance: Bag,
         sub_price: u64
     }
@@ -56,11 +56,11 @@ module platform::subscription {
 
     /// Create a new subscription platform.
     public fun new_platform<COIN>(price:u64, ctx: &mut TxContext) {
-        let id = object::new(ctx);
-        let user_accounts = table::new<address, Account<COIN>>(ctx);
+        let id_ = object::new(ctx);
+        let inner_ = object::uid_to_inner(&id_);
         transfer::share_object(Platform<COIN> {
-            id,
-            user_accounts,
+            id: id_,
+            inner: inner_,
             balance: bag::new(ctx),
             sub_price: price
         })
@@ -74,7 +74,7 @@ module platform::subscription {
         coin_metadata: &CoinMetadata<COIN>,
         coin: Coin<COIN>,
         ctx: &mut TxContext
-    ) {
+    ) : Account<COIN> {
         let value = coin::value(&coin);
         let deposit_value = value - (((value as u128) * FEE / 100) as u64);
         assert!(value + deposit_value >= platform.sub_price, EInsufficientFunds);
@@ -100,7 +100,7 @@ module platform::subscription {
 
         let id_ = object::new(ctx);
         let inner_ = object::uid_to_address(&id_); 
-        let user_account = Account {
+        let account = Account {
             id: id_,
             inner: inner_,
             create_date: clock::timestamp_ms(clock),
@@ -108,8 +108,7 @@ module platform::subscription {
             subscription_valid_until: 0,
             user_address: tx_context::sender(ctx),
         };
-        // Save user account to the platform
-        table::add(&mut platform.user_accounts, inner_, user_account);
+        account
     }
 
     // Renew a user's subscription on the platform.
@@ -121,7 +120,6 @@ module platform::subscription {
         coin: Coin<COIN>,
         ctx: &mut TxContext
     ) {
-        let user_account = table::borrow_mut<address, Account<COIN>>(&mut platform.user_accounts, acc.inner);
         // get value 
         let value = coin::value(&coin);
         // calculate deposit value 
@@ -149,14 +147,6 @@ module platform::subscription {
         // lets check is there any same token in platform bag 
         helper_bag(platform_bag, coin_names, platform_balance);
     }
-
-    // // Accessor functions
-
-    // public fun user_create_date<COIN>(self: &Platform<COIN>, ctx: &mut TxContext): u64 {
-    //     assert!(table::contains<address, Account<COIN>>(&self.user_accounts, tx_context::sender(ctx)), ENoSubscription);
-    //     let user_account = table::borrow<address, Account<COIN>>(&self.user_accounts, tx_context::sender(ctx));
-    //     user_account.create_date
-    // }
 
     // // Implement other accessor functions as needed...
 

@@ -1,9 +1,10 @@
 #[allow(lint(self_transfer))]
 module platform::subscription {
-    use sui::tx_context::{Self, TxContext};
+    use sui::tx_context::{Self, TxContext, sender};
     use sui::object::{Self, UID};
     use sui::coin::{Self, Coin};
     use sui::table::{Table, Self};
+    use sui::bag::{Self, Bag};
     use sui::transfer;
     use sui::clock::{Self, Clock};
     use std::string::{String};
@@ -14,6 +15,8 @@ module platform::subscription {
     const EInsufficientFunds: u64 = 1; // Insufficient funds to subscribe or renew
     const EInvalidTransaction: u64 = 2; // Invalid transaction type
     const ESubscriptionExists: u64 = 3; // User already has an active subscription
+
+    const FEE: u64 = 1;
 
     // Type that stores user account data:
     struct Account<phantom COIN> has key, store {
@@ -30,16 +33,35 @@ module platform::subscription {
     struct Platform<phantom COIN> has key, store {
         id: UID,
         user_accounts: Table<address, Account<COIN>>,
+        balance: Bag,
         platform_address: address
     }
 
+    struct Protocol has key, store {
+        id: UID,
+        balance: Bag
+    }
+
+    struct AdminCap has key {
+        id: UID
+    }
+
+    fun init(ctx: &mut TxContext) {
+        transfer::share_object(Protocol {
+            id: object::new(ctx),
+            balance: bag::new(ctx)
+        });
+        transfer::transfer(AdminCap{id: object::new(ctx)}, sender(ctx));
+    }
+
     /// Create a new subscription platform.
-    public fun create_platform<COIN>(ctx: &mut TxContext) {
+    public fun new_platform<COIN>(ctx: &mut TxContext) {
         let id = object::new(ctx);
         let user_accounts = table::new<address, Account<COIN>>(ctx);
         transfer::share_object(Platform<COIN> {
             id,
             user_accounts,
+            balance: bag::new(ctx),
             platform_address: tx_context::sender(ctx)
         })
     }
@@ -56,7 +78,7 @@ module platform::subscription {
         let id_ = object::new(ctx);
         let inner_ = object::uid_to_address(&id_); 
         let user_account = Account {
-            id: object::new(ctx),
+            id: id_,
             inner: inner_,
             create_date: clock::timestamp_ms(clock),
             last_subscription_date: 0,
@@ -71,10 +93,10 @@ module platform::subscription {
     // Renew a user's subscription on the platform.
     public fun renew_subscription<COIN>(
         platform: &mut Platform<COIN>,
+        acc: &Account<COIN>,
         ctx: &mut TxContext
     ) {
-        assert!(table::contains<address, Account<COIN>>(&platform.user_accounts, tx_context::sender(ctx)), ENoSubscription);
-        let user_account = table::borrow_mut<address, Account<COIN>>(&mut platform.user_accounts, tx_context::sender(ctx));
+        let user_account = table::borrow_mut<address, Account<COIN>>(&mut platform.user_accounts, acc.inner);
         assert!(coin::value(&user_account.subscription_fee) >= 0, EInsufficientFunds);
         // Subscription renewal logic goes here
     }

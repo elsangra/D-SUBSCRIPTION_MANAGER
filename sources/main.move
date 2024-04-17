@@ -4,18 +4,16 @@ module platform::subscription {
     use sui::object::{Self, UID, ID};
     use sui::coin::{Self, Coin, CoinMetadata};
     use sui::balance::{Self, Balance};
-    use sui::table::{Table, Self};
     use sui::bag::{Self, Bag};
     use sui::transfer;
     use sui::clock::{Self, Clock, timestamp_ms};
     use std::string::{Self, String};
-    use std::vector;
 
     /// Error Constants ///
-    const ENoSubscription: u64 = 0; // No active subscription for the user
+    // const ENoSubscription: u64 = 0; // No active subscription for the user
     const EInsufficientFunds: u64 = 1; // Insufficient funds to subscribe or renew
-    const EInvalidTransaction: u64 = 2; // Invalid transaction type
-    const ESubscriptionExists: u64 = 3; // User already has an active subscription
+    // const EInvalidTransaction: u64 = 2; // Invalid transaction type
+    // const ESubscriptionExists: u64 = 3; // User already has an active subscription
     const EInvalidCap: u64 = 4; // User already has an active subscription
 
     const FEE: u128 = 1;
@@ -98,7 +96,7 @@ module platform::subscription {
         // get platfrom bag
         let platform_bag = &mut platform.balance;
         // define the name of coin
-        let name = coin::get_name(coin_metadata);
+        let _name = coin::get_name(coin_metadata);
         // we should create a key value pair in our bag like <String, Balance>
         let coin_names = string::utf8(b"coins");
         // lets check is there any same token in protocol bag 
@@ -149,7 +147,7 @@ module platform::subscription {
         // get platfrom bag
         let platform_bag = &mut platform.balance;
         // define the name of coin
-        let name = coin::get_name(coin_metadata);
+        let _name = coin::get_name(coin_metadata);
         // we should create a key value pair in our bag like <String, Balance>
         let coin_names = string::utf8(b"coins");
         // lets check is there any same token in protocol bag 
